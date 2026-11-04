@@ -1,0 +1,20 @@
+[theme]
+primaryColor = "#087f75"
+
+[theme.light]
+primaryColor = "#087f75"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f2f5f5"
+textColor = "#202929"
+
+[theme.dark]
+primaryColor = "#45c8ae"
+backgroundColor = "#171b1b"
+secondaryBackgroundColor = "#252c2c"
+textColor = "#edf2f0"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
