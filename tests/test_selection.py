@@ -4,13 +4,34 @@ import zipfile
 import pandas as pd
 import pytest
 
-from binder_viz.selection import candidate_pool, export_selection, make_aligner, pair_identity, select_candidates
+from binder_viz.selection import candidate_pool, combine_scores, export_selection, make_aligner, pair_identity, select_candidates
 
 
 def pool():
     return pd.DataFrame({"sequence_id": ["a", "b", "c", "d"], "sequence": ["AAAAAA", "AAAAAA", "CCCCCC", "DDDDDD"],
                          "target": ["T", "T", "T", "Other"], "iptm__af2": [0.9, 0.8, 0.7, 0.6],
                          "n_rep_p2": [3, 1, 3, 3]})
+
+
+def test_combined_ranking_rules():
+    table = pool().assign(**{"energy__af2": [-1.0, -4.0, -2.0, -3.0]})
+    directions = {"iptm__af2": "higher_better", "energy__af2": "lower_better"}
+    weights = {"iptm__af2": 1.0, "energy__af2": 1.0}
+    mean_rank = combine_scores(table, weights, directions)
+    assert mean_rank.iloc[1] > mean_rank.iloc[2]
+    assert combine_scores(table, weights, directions, "min_rank").iloc[0] == pytest.approx(1 / 3)
+    intersection = combine_scores(table, weights, directions, "intersection", percentile=0.9)
+    assert intersection.notna().sum() == 1
+    union = combine_scores(table, weights, directions, "union", percentile=0.9)
+    assert union.notna().sum() == 3
+    chosen = candidate_pool(table.assign(combined=mean_rank), "combined", "higher_better")
+    assert chosen[chosen.target.eq("T")].sequence_id.iloc[0] == "b"
+    with pytest.raises(ValueError, match="nonzero weight"):
+        combine_scores(table, {"iptm__af2": 0.0}, directions)
+    with pytest.raises(ValueError, match="Unknown combination rule"):
+        combine_scores(table, weights, directions, "median")
+    with pytest.raises(ValueError, match="not available"):
+        combine_scores(table, {"absent__af2": 1.0}, directions)
 
 
 def test_alignment_identity_and_selection_limits():

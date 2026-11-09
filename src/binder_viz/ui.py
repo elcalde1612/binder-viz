@@ -147,7 +147,7 @@ def run():
         table, catalog = global_filters(table, catalog, config)
         with analysis:
             if not table.empty:
-                render_analysis(table, catalog, config, experiments, coefficients, full_table=off_target_predictions)
+                render_analysis(table, catalog, config, experiments, coefficients, result, active, full_table=off_target_predictions)
             else:
                 st.info("No sequences pass the global filters.")
         with selection:

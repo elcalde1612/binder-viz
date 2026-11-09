@@ -125,17 +125,83 @@ def evaluate(frame: pd.DataFrame, score: str, outcome: str = "binds", metric: st
             "valid_bootstraps": len(samples), "small_n": len(data) < 30 or (positive is not None and min(positive, len(data) - positive) < 5)}
 
 
+def exclusion_reason(frame: pd.DataFrame, entry: dict, include_unconfirmed: bool) -> str:
+    if entry["column"] not in frame:
+        return "column absent from the current table"
+    if entry.get("constant", False):
+        return "constant value"
+    if entry["direction"] == "unknown":
+        return "direction unknown"
+    if not entry["confirmed"] and not include_unconfirmed:
+        return "direction inferred, not confirmed"
+    if frame[entry["column"]].notna().sum() < 2:
+        return "fewer than two measured values"
+    return ""
+
+
+def score_eligibility(frame: pd.DataFrame, catalog: pd.DataFrame, include_unconfirmed=False) -> pd.DataFrame:
+    rows = [{"score": entry["column"], "stage": entry.get("stage"), "model": entry.get("model"),
+             "direction": entry["direction"], "confirmed": entry.get("confirmed", False),
+             "missing_fraction": entry.get("missing_fraction"),
+             "reason": exclusion_reason(frame, entry, include_unconfirmed)} for entry in catalog.to_dict("records")]
+    table = pd.DataFrame(rows, columns=["score", "stage", "model", "direction", "confirmed", "missing_fraction", "reason"])
+    table.insert(1, "eligible", table.reason.eq(""))
+    return table
+
+
 def rank_scores(frame: pd.DataFrame, catalog: pd.DataFrame, outcome="binds", metric="AUROC",
                 include_unconfirmed=False, **kwargs) -> pd.DataFrame:
     rows = []
     for entry in catalog.to_dict("records"):
-        if entry["column"] not in frame or entry.get("constant", False):
-            continue
-        if entry["direction"] == "unknown" or (not entry["confirmed"] and not include_unconfirmed):
+        if exclusion_reason(frame, entry, include_unconfirmed):
             continue
         row = evaluate(frame, entry["column"], outcome, metric, entry["direction"], **kwargs)
         rows.append({**entry, **row})
     return pd.DataFrame(rows).sort_values("value", ascending=False, na_position="last") if rows else pd.DataFrame()
+
+
+def score_target_matrix(frame: pd.DataFrame, columns: list[str], directions: dict[str, str], outcome="binds",
+                        metric="AUROC", minimum_sequences: int = 5, **kwargs) -> pd.DataFrame:
+    groups = [("Overall", frame)]
+    if "target" in frame:
+        groups += [(str(target), subset) for target, subset in frame.groupby("target", sort=True)]
+    rows = []
+    for scope, subset in groups:
+        for column in columns:
+            if column not in subset:
+                continue
+            result = evaluate(subset, column, outcome, metric, directions.get(column, "higher_better"), **kwargs)
+            if result["n"] < minimum_sequences:
+                result["value"], result["ci_low"], result["ci_high"] = np.nan, np.nan, np.nan
+            rows.append({"scope": scope, **result})
+    return pd.DataFrame(rows)
+
+
+def combination_gain(frame: pd.DataFrame, columns: list[str], directions: dict[str, str], outcome="binds",
+                     metric="Hit rate", max_scores: int = 3, within_target: bool = True, **kwargs) -> pd.DataFrame:
+    """Greedy forward search: best single score, then the best score to add at each step."""
+    if len(columns) < 2:
+        raise ValueError("Combination search requires at least two scores")
+    work = frame.copy()
+    chosen, remaining, rows, baseline = [], list(columns), [], np.nan
+    for size in range(1, min(max_scores, len(columns)) + 1):
+        best_column, best_result = None, None
+        for candidate in remaining:
+            trial = chosen + [candidate]
+            work["combination_candidate"] = (pd.to_numeric(work[candidate], errors="coerce") * direction_sign(directions[candidate])
+                                             if size == 1 else composite(work, dict.fromkeys(trial, 1.0), directions, "rank", within_target))
+            result = evaluate(work, "combination_candidate", outcome, metric, "higher_better", **kwargs)
+            if np.isfinite(result["value"]) and (best_result is None or result["value"] > best_result["value"]):
+                best_column, best_result = candidate, result
+        if best_result is None:
+            break
+        chosen.append(best_column)
+        remaining.remove(best_column)
+        baseline = best_result["value"] if size == 1 else baseline
+        rows.append({"n_scores": size, "scores": " + ".join(chosen), "added": best_column, "metric": metric,
+                     "value": best_result["value"], "ci_low": best_result["ci_low"], "ci_high": best_result["ci_high"],
+                     "lift": best_result["value"] - baseline, "n": best_result["n"], "positives": best_result["positives"]})
+    return pd.DataFrame(rows)
 
 
 def composite(frame: pd.DataFrame, weights: dict[str, float], directions: dict[str, str],

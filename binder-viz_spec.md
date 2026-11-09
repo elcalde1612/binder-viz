@@ -107,8 +107,10 @@ scores:
   from the source file. The direction is auto-detected from the sign of the
   effect against experimental data (or left as `unknown` if there are no
   labels). They get an "inferred" badge in the UI, direction is overridable, and
-  the direction is excluded from the "best score" ranking until confirmed (or
-  included, with a toggle).
+  inferred directions are included in the "best score" ranking by default; a
+  toggle restricts the ranking to registry-confirmed scores. The Analysis tab
+  lists every score with an eligible flag and the reason it was excluded
+  (absent, constant, unknown direction, inferred, too few measured values).
 - The registry can be edited in the Setup tab and saved back to file.
 - Warn on registry entries not found in any CSV and on columns with
   excessive NaNs, constant values or non-numeric types.
@@ -212,14 +214,25 @@ avoid treating replicates as independent.
 6. **Aggregation sensitivity (optional):** re-run a chosen metric under
    different replicate aggregations (best/mean/worst) to see how robust a score
    is to that choice.
+7. **Score combinations:** a greedy forward search over a chosen pool of
+   scores reports the best single score and then the score that adds the most
+   at each step, combining components as equally weighted percentile ranks.
+   Each step shows the metric (e.g. hit rate), its CI and the lift over the
+   best single score, so the benefit of combining n scores is explicit.
+8. **Ranking quality:** for each score, the chosen ranking metric computed
+   globally and per target, as a sortable table plus a score-by-target heatmap.
+   Targets with too few labelled sequences are left blank.
 
 ### 3. Candidate selection tab
 
 Available when run folders are loaded. Experimental data is optional and
 used only to exclude already-tested designs and to show validated scores.
 
-- Choose the ranking score: any raw, composite or consensus score, with a
-  default from the Analysis tab (top AUROC).
+- Choose one or more ranking scores: any raw, composite or consensus score,
+  with a default from the Analysis tab (top AUROC). A single score ranks
+  directly; several scores are combined into within-target percentile ranks
+  under a selectable rule: weighted mean rank, minimum rank, intersection (all
+  scores above a percentile) or union (any score above it).
 - Hard filters: min/max thresholds per score, per target, and agreement
   across N models.
 - Diversity: cluster by sequence identity (user threshold) and cap picks per

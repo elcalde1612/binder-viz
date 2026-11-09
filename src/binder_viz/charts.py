@@ -11,8 +11,8 @@ from .experiments import sequence_labels
 from .registry import direction_sign
 
 
-COLORS = {"none": "#899596", "weak": "#dfad45", "medium": "#e17b67", "strong": "#087f75"}
-PALETTE = ["#087f75", "#e17b67", "#d2a12b", "#557da1", "#8b668a"]
+COLORS = {"none": "#333838", "weak": "#ca7054", "medium": "#e7d04f", "strong": "#2ac565"}
+PALETTE = ["#087f75", "#e68282", "#d674a2", "#557da1", "#8b668a"]
 PNG_CONFIG = {"displaylogo": False, "toImageButtonOptions": {"format": "png", "filename": "binder_viz_chart", "scale": 2}}
 
 
@@ -101,32 +101,57 @@ def affinity_marker_sizes(kd_nM: pd.Series) -> pd.Series:
     return sizes
 
 
+BINDING_LEVELS = {"none": 0.0, "weak": 1.0, "medium": 2.0, "strong": 3.0, "nonbinding": 0.0, "binding": 3.0}
+BINDING_SCALE = [[0.0, COLORS["none"]], [1 / 3, COLORS["weak"]], [2 / 3, COLORS["medium"]], [1.0, COLORS["strong"]]]
+MARKER_KINDS = {"graded": ("", "circle", None), "ungraded": (" (binding, ungraded)", "square", "#557da1"),
+                "unmeasured": (" (unmeasured)", "diamond", "#ccd2d2")}
+
+
 def method_agreement(frame: pd.DataFrame, x: str, y: str, selected_ids=(), color_by: str = "binding_class") -> go.Figure:
     data = numeric_points(frame, [x, y]).drop_duplicates("sequence_id")
     if data.empty:
         return empty_plot("Cross-model agreement", "No paired numeric scores available")
     binary = data.get("binds", pd.Series(index=data.index, dtype="boolean"))
-    colors = {**COLORS, "binding": "#087f75", "nonbinding": "#899596", "unmeasured": "#899596", "binding (ungraded)": "#557da1"}
     if color_by == "binds":
         labels = binary.map({True: "binding", False: "nonbinding"}).fillna("unmeasured")
+        ticks = {0.0: "nonbinding", 3.0: "binding"}
     else:
         labels = data.get("binding_class", pd.Series(index=data.index, dtype=str)).fillna("unmeasured")
         labels = labels.mask(labels.eq("unmeasured") & binary.eq(True).fillna(False), "binding (ungraded)")
         labels = labels.mask(labels.eq("unmeasured") & binary.eq(False).fillna(False), "none")
+        ticks = {0.0: "none", 1.0: "weak", 2.0: "medium", 3.0: "strong"}
+    levels = labels.map(BINDING_LEVELS)
+    kinds = pd.Series("graded", index=data.index).mask(levels.isna(), "unmeasured").mask(labels.eq("binding (ungraded)"), "ungraded")
     kd = data.get("kd_nM", pd.Series(np.nan, index=data.index))
     if "source" in data:
         kd = kd.where(data.source.eq("internal"))
     if "kd_qualifier" in data:
         kd = kd.where(data.kd_qualifier.eq("="))
     sizes = affinity_marker_sizes(kd)
+    targets = data.get("target", pd.Series("all", index=data.index)).astype(str)
     figure = go.Figure()
-    for label in sorted(labels.unique()):
-        points = data[labels.eq(label)]
-        figure.add_trace(go.Scatter(x=points[x], y=points[y], mode="markers", name=label,
-                                        marker={"size": sizes.loc[points.index], "color": colors.get(label, "#557da1"),
-                                            "symbol": "diamond" if label == "unmeasured" else "circle", "opacity": 0.7},
-                                        text=points.display_name,
-                                    hovertemplate=f"%{{text}}<br>{x}=%{{x:.3g}}<br>{y}=%{{y:.3g}}<extra>{label}</extra>"))
+    scale_shown = False
+    # One legend entry per target and marker kind, each individually toggleable.
+    for target in sorted(targets.unique()):
+        for kind, (suffix, symbol, color) in MARKER_KINDS.items():
+            points = data[targets.eq(target) & kinds.eq(kind)]
+            if points.empty:
+                continue
+            marker = {"size": sizes.loc[points.index], "opacity": 0.75, "symbol": symbol,
+                      "line": {"width": 0.6, "color": "rgba(80,80,80,0.45)"}}
+            if color:
+                marker["color"] = color
+            else:
+                marker.update(color=levels.loc[points.index], colorscale=BINDING_SCALE, cmin=0, cmax=3,
+                              showscale=not scale_shown,
+                              colorbar={"title": "Binding", "tickvals": list(ticks), "ticktext": list(ticks.values()),
+                                        "thickness": 12, "len": 0.75})
+                scale_shown = True
+            figure.add_trace(go.Scatter(x=points[x], y=points[y], mode="markers", legendgroup=target,
+                                        name=f"{target}{suffix}", marker=marker, text=points.display_name,
+                                        customdata=labels.loc[points.index],
+                                        hovertemplate=f"%{{text}}<br>{x}=%{{x:.3g}}<br>{y}=%{{y:.3g}}"
+                                                      f"<br>%{{customdata}}<extra>{target}</extra>"))
     selected = data[data.sequence_id.isin(selected_ids)]
     if not selected.empty:
         figure.add_trace(go.Scatter(x=selected[x], y=selected[y], mode="markers", name="Selected candidates",
@@ -137,7 +162,9 @@ def method_agreement(frame: pd.DataFrame, x: str, y: str, selected_ids=(), color
         figure.add_shape(type="line", x0=lower, y0=lower, x1=upper, y1=upper, line={"dash": "dash", "color": "#899596"})
     figure.update_xaxes(title=x)
     figure.update_yaxes(title=y)
-    return layout(figure, "Cross-model agreement", 470)
+    figure = layout(figure, "Cross-model agreement", 470)
+    figure.update_layout(legend={"title": "Click to toggle", "groupclick": "toggleitem"})
+    return figure
 
 
 def score_distribution(full: pd.DataFrame, active: pd.DataFrame, score: str, selected_ids=(), replicate_rows: bool = False) -> go.Figure:

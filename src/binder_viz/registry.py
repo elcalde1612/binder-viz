@@ -45,6 +45,26 @@ DEFAULT_SCORES += [
 DIRECTIONS = {"higher_better", "lower_better", "unknown"}
 DERIVED_SCORES = {"composite", "score_refold", "score_electrostatics", "score_rosetta"}
 DERIVED_SCORES.update(f"pct_{name}" for metrics in METRIC_GROUPS.values() for name in metrics)
+CONSENSUS_MODES = ["mean_rank", "mean_zscore", "min", "passing"]
+
+
+def builtin_composites(models: list[str], directions: dict[str, str]) -> list[dict]:
+    """Composite and consensus recipes offered for every loaded model, skipped when their ingredients are missing."""
+    specs = []
+    for model in models:
+        confidence = [column for column in [f"iptm__{model}", f"ipsae__{model}"] if column in directions]
+        if len(confidence) == 2:
+            specs.append({"column": f"composite_confidence__{model}", "kind": "composite",
+                          "weights": dict.fromkeys(confidence, 1.0), "normalization": "rank"})
+        interface = [f"iptm__{model}", f"ros_interface_dG__{model}"]
+        if all(column in directions for column in interface):
+            specs.append({"column": f"composite_interface__{model}", "kind": "composite",
+                          "weights": dict.fromkeys(interface, 1.0), "normalization": "rank"})
+    iptms = [f"iptm__{model}" for model in models if f"iptm__{model}" in directions]
+    if len(iptms) > 1:
+        specs += [{"column": f"consensus_{mode}__all", "kind": "consensus", "columns": iptms,
+                   "mode": mode, "minimum_models": len(iptms)} for mode in CONSENSUS_MODES]
+    return specs
 
 
 def load_registry(path: str | Path) -> list[dict]:

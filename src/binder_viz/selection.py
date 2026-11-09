@@ -29,6 +29,44 @@ def pair_identity(aligner: PairwiseAligner, first: str, second: str) -> float:
     return counts.identities / denominator if denominator else 0.0
 
 
+COMBINATION_RULES = ["mean_rank", "min_rank", "intersection", "union"]
+COMBINED_SCORE = "ranking_score__combined"
+
+
+def score_ranks(table: pd.DataFrame, columns: list[str], directions: dict[str, str], within_target: bool = True) -> pd.DataFrame:
+    ranks = pd.DataFrame(index=table.index)
+    for column in columns:
+        if column not in table:
+            raise ValueError(f"Ranking score {column!r} is not available")
+        if directions.get(column, "unknown") not in {"higher_better", "lower_better"}:
+            raise ValueError(f"Ranking score {column!r} has no favorable direction")
+        values = pd.to_numeric(table[column], errors="coerce") * direction_sign(directions[column])
+        ranks[column] = values.groupby(table["target"]).rank(pct=True) if within_target else values.rank(pct=True)
+    return ranks
+
+
+def combine_scores(table: pd.DataFrame, weights: dict[str, float], directions: dict[str, str],
+                   rule: str = "mean_rank", percentile: float = 0.8, within_target: bool = True) -> pd.Series:
+    """Combine several scores into one higher-is-better ranking of within-target percentile ranks."""
+    if rule not in COMBINATION_RULES:
+        raise ValueError(f"Unknown combination rule {rule!r}")
+    columns = [column for column, weight in weights.items() if weight]
+    if not columns:
+        raise ValueError("Combined ranking requires at least one nonzero weight")
+    ranks = score_ranks(table, columns, directions, within_target)
+    complete = ranks.notna().all(axis=1)
+    if rule == "min_rank":
+        combined = ranks.min(axis=1).where(complete)
+    else:
+        total = sum(abs(weights[column]) for column in columns)
+        combined = sum(ranks[column] * weights[column] for column in columns) / total
+    if rule == "intersection":
+        combined = combined.where(ranks.ge(percentile).all(axis=1) & complete)
+    elif rule == "union":
+        combined = combined.where(ranks.ge(percentile).any(axis=1))
+    return combined
+
+
 def candidate_pool(table: pd.DataFrame, score: str, direction: str, thresholds: list[dict] | None = None,
                    tested: set[str] | None = None, agreement_columns: list[str] | None = None,
                    directions: dict[str, str] | None = None, minimum_models: int = 0,

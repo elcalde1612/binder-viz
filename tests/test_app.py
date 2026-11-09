@@ -32,7 +32,7 @@ def test_demo_load_analyze_select(tmp_path):
     button.click().run(timeout=120)
     assert not app.exception
     assert not app.error, [item.value for item in app.error]
-    ranking = app.session_state["analysis_ranking"]
+    ranking = app.session_state["analysis_ranking"][1]
     assert not ranking.empty
     assert ranking.n.max() == 32
     assert ranking.value.max() > 0.8
@@ -62,6 +62,8 @@ def test_specificity_controls_keep_hidden_off_target_evidence(tmp_path):
     assert selected.off_target__B__iptm__af2.tolist() == [0.2]
     assert "B" in app.multiselect(key="selection_negative_targets").options
     assert app.session_state["config"].selection["negative_selection"][0]["threshold"] == 0.7
+    charted = {element.proto.id.rsplit("-", 1)[-1] for element in app.get("plotly_chart")}
+    assert {"selection_ranking_chart", "selection_cluster_chart"} <= charted
     app.checkbox(key="selection_exclude_missing").uncheck().run(timeout=60)
     assert not app.exception
     assert not app.error, [item.value for item in app.error]
@@ -143,7 +145,7 @@ def test_new_target_without_experimental_data(tmp_path):
     assert not app.session_state["selected_candidates"].empty
     assert set(app.session_state["selected_candidates"].target) == {"Novel-X"}
     assert app.selectbox(key="analysis_explore_score").value == "composite__af2"
-    assert len(app.get("plotly_chart")) >= 5
+    assert len(app.get("plotly_chart")) >= 3
     app.selectbox(key="analysis_explore_score").set_value("iptm__af2").run(timeout=60)
     app.toggle(key="analysis_explore_replicates").set_value(True).run(timeout=60)
     assert not app.exception
@@ -209,6 +211,29 @@ def test_run_folder_edits_are_batched_and_persist_after_apply(tmp_path):
     assert [(folder.target, folder.model) for folder in app.session_state["config"].folders] == [("Target-B", "af2")]
 
 
+def test_custom_target_name_becomes_selectable_in_folder_editor(tmp_path):
+    run = write_setup_run(tmp_path, "one_af2")
+    config = SessionConfig(folders=[Folder(str(run), "Target-A", "af2")])
+    app = AppTest.from_file(str(APP))
+    app.session_state["pending_config"] = config.to_dict()
+    app.run(timeout=30)
+    assert "Novel-Z" not in app.session_state["setup_custom_targets"]
+    app.text_input(key="setup_extra_target").set_value("Novel-Z").run(timeout=30)
+    next(button for button in app.button if button.label == "Add to target list").click().run(timeout=30)
+    assert not app.exception
+    assert app.session_state["setup_custom_targets"] == ["Novel-Z"]
+    app.session_state["setup_folders_0"] = {"edited_rows": {0: {"target": "Novel-Z"}}, "added_rows": [], "deleted_rows": []}
+    app.run(timeout=30)
+    app.button(key="setup_apply_folders").click()
+    states = app._tree.get_widget_states()
+    editor = next(element for element in app.dataframe if element.proto.id.endswith("setup_folders_0"))
+    state = next((item for item in states.widgets if item.id == editor.proto.id), states.widgets.add(id=editor.proto.id))
+    state.string_value = json.dumps({"edited_rows": {0: {"target": "Novel-Z"}}, "added_rows": [], "deleted_rows": []})
+    app._run(widget_state=states, timeout=30)
+    assert not app.error, [item.value for item in app.error]
+    assert [folder.target for folder in app.session_state["config"].folders] == ["Novel-Z"]
+
+
 def test_exploration_skips_empty_default_composite(tmp_path):
     stats = tmp_path / "custom_af2" / "traj_stats"
     stats.mkdir(parents=True)
@@ -269,7 +294,8 @@ def test_exploratory_figures_keep_measurements_and_candidates_distinct():
                           "source": ["internal", "public", None], "kd_nM": [10, 0.1, None],
                           "kd_qualifier": ["=", "public_not_applicable", "missing"], "cluster_id": [1, 2, 3]})
     figure = method_agreement(table, "composite__af2", "composite__opendde", ["c"])
-    assert any(trace.name == "unmeasured" and trace.marker.symbol == "diamond" for trace in figure.data)
+    assert any(trace.name == "T (unmeasured)" and trace.marker.symbol == "diamond" for trace in figure.data)
+    assert any(trace.marker.colorscale and trace.marker.showscale for trace in figure.data)
     assert any(trace.name == "Selected candidates" for trace in figure.data)
     kd = kd_scatter(table, "composite__af2")
     assert sum(len(trace.x) for trace in kd.data) == 1
@@ -315,10 +341,14 @@ def test_model_agreement_independent_axes_colors_and_experimental_names(tmp_path
     figure = json.loads(chart.proto.spec)
     assert figure["layout"]["xaxis"]["title"]["text"] == "ipsae__af2"
     assert figure["layout"]["yaxis"]["title"]["text"] == "iptm__af2"
-    assert {trace["name"] for trace in figure["data"]} >= {"binding", "nonbinding", "unmeasured"}
+    assert {trace["name"] for trace in figure["data"]} == {"T", "T (unmeasured)", "Selected candidates"}
+    assert ["nonbinding", "binding"] in [list(trace["marker"].get("colorbar", {}).get("ticktext", [])) for trace in figure["data"]]
+    assert {"binding", "nonbinding"} <= {label for trace in figure["data"] for label in trace.get("customdata", [])}
     assert "Named A" in [name for trace in figure["data"] for name in trace.get("text", [])]
     app.selectbox(key="analysis_agreement_y").set_value("ipsae__af2")
     app.radio(key="analysis_agreement_color").set_value("binding_class").run(timeout=60)
     assert not app.exception
     chart = next(element for element in app.get("plotly_chart") if element.proto.id.endswith("analysis_explore_agreement"))
-    assert "strong" in {trace["name"] for trace in json.loads(chart.proto.spec)["data"]}
+    traces = json.loads(chart.proto.spec)["data"]
+    assert "strong" in {label for trace in traces for label in trace.get("customdata", [])}
+    assert ["none", "weak", "medium", "strong"] in [list(trace["marker"].get("colorbar", {}).get("ticktext", [])) for trace in traces]

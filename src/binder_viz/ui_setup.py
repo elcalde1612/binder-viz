@@ -91,7 +91,7 @@ def experimental_controls(config) -> list[str]:
                   "columns": json.dumps(spec.get("columns", {})), "kd_unit": spec.get("kd_unit", "auto"),
                   "detection_limit_nM": spec.get("detection_limit_nM")} for spec in config.experiments]
         edits = st.data_editor(pd.DataFrame(specs, columns=["path", "source", "target", "columns", "kd_unit", "detection_limit_nM"]),
-                               hide_index=True, num_rows="dynamic", use_container_width=True, key="setup_experiments",
+                               hide_index=True, num_rows="dynamic", key="setup_experiments",
                                column_config={"path": st.column_config.TextColumn("Experimental CSV / local folder", width="large"),
                                               "source": st.column_config.SelectboxColumn("Source", options=["auto", "internal", "public"]),
                                               "columns": st.column_config.TextColumn("Column map (JSON / YAML / local file or folder)"),
@@ -132,7 +132,7 @@ def experimental_controls(config) -> list[str]:
         counts[1].metric("Available experimental targets", len(targets))
         with st.expander("Available Experimental Targets"):
             summary = preview.table.groupby(["target", "source"], dropna=False).size().rename("measurements").reset_index()
-            st.dataframe(summary, hide_index=True, use_container_width=True)
+            st.dataframe(summary, hide_index=True)
     if preview.warnings:
         with st.expander(f"Experimental warnings ({len(preview.warnings)})"):
             for warning in preview.warnings:
@@ -143,11 +143,12 @@ def experimental_controls(config) -> list[str]:
 def render_setup(config, on_load):
     experimental_targets = experimental_controls(config)
     st.subheader("Run Folders")
+    custom_targets = st.session_state.setdefault("setup_custom_targets", [])
     with st.expander("Discover Local Runs"):
         roots = st.text_area("Local run-data paths", height=110, key="setup_run_root",
                              placeholder="/data/batch1\n/data/batch2")
         fields = st.columns(2)
-        target_options = sorted(set(experimental_targets) | {folder.target for folder in config.folders})
+        target_options = sorted(set(experimental_targets) | set(custom_targets) | {folder.target for folder in config.folders})
         choice = fields[0].selectbox("Target for discovered runs", ["Infer from folder", "New target"] + target_options,
                                      key="setup_discovery_target_choice")
         target = "" if choice in {"Infer from folder", "New target"} else choice
@@ -176,11 +177,20 @@ def render_setup(config, on_load):
                     st.success(f"Added {len(added)} runs")
     folders = pd.DataFrame([asdict(folder) for folder in config.folders], columns=["path", "target", "model"])
     version = st.session_state.get("setup_folders_version", 0)
+    naming = st.columns([3, 1])
+    new_target = naming[0].text_input("Add a target name", key="setup_extra_target",
+                                      placeholder="Target without experimental data").strip()
+    if naming[1].button("Add to target list", icon=":material/add:", disabled=not new_target):
+        if new_target not in target_options:
+            st.session_state["setup_custom_targets"] = sorted(set(custom_targets) | {new_target})
+            target_options = sorted(set(target_options) | {new_target})
+        st.rerun()
     with st.form("setup_folder_edits", border=False, enter_to_submit=False):
-        edited = st.data_editor(folders, num_rows="dynamic", hide_index=True, use_container_width=True,
+        edited = st.data_editor(folders, num_rows="dynamic", hide_index=True,
                                 key=f"setup_folders_{version}",
                                 column_config={"path": st.column_config.TextColumn("Run file / folder", width="large"),
-                                               "target": st.column_config.SelectboxColumn("Target", options=target_options, required=True),
+                                               "target": st.column_config.SelectboxColumn("Target", options=target_options, required=True,
+                                                                                          help="Pick a known target, or add a new name above to make it selectable."),
                                                "model": "Cofolding model"})
         apply_folders = st.form_submit_button("Apply run-folder edits", icon=":material/check:", key="setup_apply_folders")
     if apply_folders:
@@ -197,10 +207,10 @@ def render_setup(config, on_load):
     with st.expander("Detected files"):
         detected = [{"target": folder.target, "model": folder.model, "file": str(path), "stage": f"phase{phase}"}
                     for folder in config.folders for path, phase in discover_files(folder.path)]
-        st.dataframe(pd.DataFrame(detected), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(detected), hide_index=True)
         if config.folders:
             grid = pd.DataFrame([asdict(folder) for folder in config.folders]).groupby(["target", "model"]).size().unstack(fill_value=0)
-            st.dataframe(grid, use_container_width=True)
+            st.dataframe(grid)
     file_states = []
     for folder in config.folders:
         for path, _ in discover_files(folder.path):
@@ -226,7 +236,7 @@ def render_setup(config, on_load):
             config.registry = load_registry(config.registry_path)
             st.session_state.pop("setup_registry", None)
         registry = config.registry if config.registry else DEFAULT_SCORES
-        entries = st.data_editor(pd.DataFrame(registry), num_rows="dynamic", hide_index=True, use_container_width=True,
+        entries = st.data_editor(pd.DataFrame(registry), num_rows="dynamic", hide_index=True,
                                  key="setup_registry", column_config={"direction": st.column_config.SelectboxColumn("Direction", options=["higher_better", "lower_better", "unknown"]),
                                                                      "stage": st.column_config.SelectboxColumn("Stage", options=["phase2", "phase3", "derived"])})
         config.registry = entries.where(pd.notna(entries), None).to_dict("records")
@@ -240,27 +250,27 @@ def render_setup(config, on_load):
     if result is None:
         return
     st.subheader("Validation")
-    st.dataframe(result.report, use_container_width=True, hide_index=True)
+    st.dataframe(result.report, hide_index=True)
     if not result.report.empty:
         folder_counts = pd.DataFrame([asdict(folder) for folder in config.folders]).groupby(["target", "model"]).size().rename("folders")
         row_counts = result.replicate_counts.groupby(["target", "model", "stage"])["n_replicates"].sum().unstack(fill_value=0)
-        st.dataframe(row_counts.join(folder_counts), use_container_width=True)
+        st.dataframe(row_counts.join(folder_counts))
     if not result.replicate_counts.empty:
         import plotly.express as px
         from .charts import layout, PNG_CONFIG
 
         figure = px.histogram(result.replicate_counts, x="n_replicates", color="stage", barmode="overlay", color_discrete_sequence=["#087f75", "#e17b67"])
-        st.plotly_chart(layout(figure, "Replicates per sequence", 280), use_container_width=True, config=PNG_CONFIG)
+        st.plotly_chart(layout(figure, "Replicates per sequence", 280), config=PNG_CONFIG)
     experiments = st.session_state.get("experiments")
     if experiments is not None and not experiments.table.empty:
         total = len(experiments.table)
         st.metric("Experimental match rate", f"{(total - len(experiments.unmatched)) / total:.0%}")
         with st.expander("Unmatched / repeated experimental measurements"):
-            st.dataframe(experiments.unmatched, hide_index=True, use_container_width=True)
-            st.dataframe(experiments.duplicates, hide_index=True, use_container_width=True)
+            st.dataframe(experiments.unmatched, hide_index=True)
+            st.dataframe(experiments.duplicates, hide_index=True)
     with st.expander("Score Directions", expanded=False):
         catalog = st.session_state["catalog"]
-        edited_catalog = st.data_editor(catalog, hide_index=True, use_container_width=True, key=f"setup_directions_{result.cache_key}",
+        edited_catalog = st.data_editor(catalog, hide_index=True, key=f"setup_directions_{result.cache_key}",
                                         disabled=["column", "name", "stage", "model", "inferred", "missing_fraction", "constant"],
                                         column_config={"direction": st.column_config.SelectboxColumn("Direction", options=["unknown", "higher_better", "lower_better"]),
                                                        "confirmed": st.column_config.CheckboxColumn("Confirmed"),
@@ -275,4 +285,4 @@ def render_setup(config, on_load):
         with st.expander(f"Warnings ({len(issues)})"):
             for warning in dict.fromkeys(issues):
                 st.warning(warning)
-    st.dataframe(result.table.head(1000), hide_index=True, use_container_width=True)
+    st.dataframe(result.table.head(1000), hide_index=True)

@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from binder_viz.analysis import add_consolidation_scores, composite, consensus, consolidation_scores, evaluate, fit_composite, paired_auroc
+from binder_viz.analysis import (add_consolidation_scores, combination_gain, composite, consensus, consolidation_scores,
+                                 evaluate, fit_composite, paired_auroc, rank_scores, score_eligibility, score_target_matrix)
 from binder_viz.experiments import attach_experiments, load_experiments, parse_kd, sequence_labels
 from binder_viz.loader import sequence_id
 from binder_viz.registry import infer_direction, score_catalog
@@ -33,6 +34,36 @@ def test_sparse_and_constant_scores():
     assert np.isnan(evaluate(data, "good__af2")["value"])
     data = cohort().assign(constant=1)
     assert np.isnan(evaluate(data, "constant")["value"])
+
+
+def test_eligibility_reports_why_scores_are_excluded():
+    data = cohort().assign(flat__af2=1.0)
+    catalog, _ = score_catalog(data, [], data)
+    reasons = score_eligibility(data, catalog).set_index("score").reason
+    assert reasons["good__af2"] == "direction inferred, not confirmed"
+    assert reasons["flat__af2"] == "constant value"
+    assert rank_scores(data, catalog, n_boot=5).empty
+    included = score_eligibility(data, catalog, include_unconfirmed=True).set_index("score")
+    assert included.loc["good__af2", "eligible"]
+    assert not included.loc["flat__af2", "eligible"]
+    assert not rank_scores(data, catalog, include_unconfirmed=True, n_boot=5).empty
+
+
+def test_combination_gain_and_per_target_ranking():
+    data = cohort()
+    directions = {"good__af2": "higher_better", "good__opendde": "higher_better", "bad__af2": "lower_better"}
+    gains = combination_gain(data, list(directions), directions, metric="AUROC", max_scores=3, n_boot=20)
+    assert gains.n_scores.tolist() == [1, 2, 3]
+    assert gains.lift.iloc[0] == 0
+    assert gains.value.iloc[0] == 1
+    assert gains.scores.iloc[1].count("+") == 1
+    with pytest.raises(ValueError, match="at least two scores"):
+        combination_gain(data, ["good__af2"], directions)
+    matrix = score_target_matrix(data, ["good__af2", "bad__af2"], directions, minimum_sequences=2, n_boot=0)
+    assert set(matrix.scope) == {"Overall", "A", "B"}
+    assert matrix.set_index(["scope", "score"]).loc[("A", "good__af2"), "value"] == 1
+    sparse = score_target_matrix(data, ["good__af2"], directions, minimum_sequences=50, n_boot=0)
+    assert sparse.value.isna().all()
 
 
 def test_direction_catalog_confirmation():
