@@ -42,7 +42,7 @@ def consolidation_scores(frame: pd.DataFrame, within_target: bool = True) -> pd.
     return result
 
 
-def add_consolidation_scores(table: pd.DataFrame, models: list[str]) -> pd.DataFrame:
+def add_consolidation_scores(table: pd.DataFrame, models: list[str], replicate_level: bool = False) -> pd.DataFrame:
     result = table.copy()
     for model in models:
         ingredients = table[["sequence_id", "target"]].copy()
@@ -58,11 +58,14 @@ def add_consolidation_scores(table: pd.DataFrame, models: list[str]) -> pd.DataF
                     column = next((column for column in preferred if column in table), None)
                     if column:
                         ingredients[name] = table[column]
-        observations = ingredients.groupby(["sequence_id", "target"], sort=False).mean(numeric_only=True).reset_index()
+        observations = ingredients if replicate_level else ingredients.groupby(["sequence_id", "target"], sort=False).mean(numeric_only=True).reset_index()
         values = consolidation_scores(observations)
         for column in values:
-            lookup = pd.Series(values[column].to_numpy(), index=observations.sequence_id)
-            result[f"{column}__{model}"] = table.sequence_id.map(lookup)
+            if replicate_level:
+                result[f"{column}__{model}"] = values[column].to_numpy()
+            else:
+                lookup = pd.Series(values[column].to_numpy(), index=observations.sequence_id)
+                result[f"{column}__{model}"] = table.sequence_id.map(lookup)
     return result
 
 

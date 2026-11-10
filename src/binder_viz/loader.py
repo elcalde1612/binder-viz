@@ -193,8 +193,56 @@ class LoadResult:
     cache_key: str
 
 
+def reduce_joined_replicates(table: pd.DataFrame, model: str, config: SessionConfig, warnings: list[str]) -> pd.DataFrame:
+    from .analysis import add_consolidation_scores, composite
+    from .registry import builtin_composites, score_catalog
+
+    table = table.copy()
+    table["sequence_id"] = [sequence_id(target, sequence) for target, sequence in zip(table.target, table.sequence)]
+    table = add_consolidation_scores(table, [model], replicate_level=True)
+    catalog, _ = score_catalog(table, config.registry or None)
+    directions = dict(zip(catalog.column, catalog.direction))
+    specs = builtin_composites([model], directions) + config.composites
+    for spec in specs:
+        weights = spec.get("weights", {})
+        if spec["kind"] != "composite" or not spec["column"].endswith(f"__{model}"):
+            continue
+        if not weights or any(column not in table or not column.endswith(f"__{model}") for column in weights):
+            continue
+        table[spec["column"]] = composite(table, weights, directions, spec.get("normalization", "rank"),
+                                           spec.get("within_target", True))
+        directions[spec["column"]] = "higher_better"
+    selector = config.joined_replicates.get("selectors", {}).get(model, f"composite__{model}")
+    if selector not in table:
+        raise ValueError(f"Joined replicate selector {selector!r} is unavailable for {model}.")
+    keys = ["target", "sequence"]
+    group = table.groupby(keys, sort=False, dropna=False)
+    scores = [column for column in numeric_columns(table) if column not in {"_rep"} and not column.startswith("n_rep_")]
+    mode = config.joined_replicates["mode"]
+    if mode == "mean":
+        out = group[scores].mean()
+    else:
+        if group[selector].count().eq(0).any():
+            warnings.append(f"{selector}: all-missing joined selector in some groups; retained first available row")
+        out = table.sort_values(selector, ascending=mode == "worst", na_position="last", kind="stable").groupby(keys, sort=False).head(1).set_index(keys)
+        out = out.drop(columns=["_rep", "sequence_id", "model"], errors="ignore")
+    for stage, settings in [(2, config.phase2), (3, config.phase3)]:
+        count = f"n_rep_p{stage}__{model}"
+        if count in table:
+            out[count] = group[count].count()
+        if settings.std:
+            stage_scores = [column for column in scores if column.startswith("ros_") == (stage == 3) and not column.split("__")[0].endswith("_std")]
+            for column in stage_scores:
+                base, suffix = column.rsplit("__", 1)
+                out[f"{base}_std__{suffix}"] = group[column].std()
+    for column in table:
+        if column.startswith("files_"):
+            out[column] = group[column].agg(lambda values: " | ".join(sorted(set(values.dropna()))))
+    return out.reset_index()
+
+
 def content_key(config: SessionConfig) -> str:
-    digest = sha256(b"binder-viz-loader-v3")
+    digest = sha256(b"binder-viz-loader-v4")
     digest.update(config.to_yaml().encode())
     for folder in config.folders:
         for path, phase in discover_files(folder.path):
@@ -266,17 +314,22 @@ def load_predictions(config: SessionConfig, cache_dir: str | Path | None = None)
         counts.append(frame.groupby(KEYS).size().rename("n_replicates").reset_index().assign(stage=f"phase{stage}"))
     replicate_counts = pd.concat(counts, ignore_index=True) if counts else pd.DataFrame(columns=KEYS + ["n_replicates", "stage"])
     both_none = config.include_phase3 and config.phase2.mode == config.phase3.mode == "none"
-    replicate_mode = both_none or (not config.include_phase3 and config.phase2.mode == "none")
-    if config.include_phase3 and ((config.phase2.mode == "none") != (config.phase3.mode == "none")):
+    joined_mode = bool(config.joined_replicates)
+    replicate_mode = joined_mode or both_none or (not config.include_phase3 and config.phase2.mode == "none")
+    if not joined_mode and config.include_phase3 and ((config.phase2.mode == "none") != (config.phase3.mode == "none")):
         warnings.append("Replicate joins require none for both stages; using mean for the unaggregated stage")
     if replicate_mode:
         active = [frame for frame in raw.values() if not frame.empty]
         if any(frame["_rep"].isna().any() or frame.duplicated(KEYS + ["_rep"]).any() for frame in active):
+            if joined_mode:
+                raise ValueError("Joined replicate aggregation requires unique, non-missing replicate IDs within each target/model/sequence.")
             warnings.append("Replicate IDs cannot be parsed uniquely; falling back to sequence-level mean aggregation")
             replicate_mode = False
     aggregated = {}
     for stage, frame in raw.items():
         settings = config.phase2 if stage == 2 else config.phase3
+        if joined_mode:
+            settings = replace(settings, mode="none", selector="", composite={}, overrides={}, std=False)
         if settings.mode == "none" and not replicate_mode:
             settings = replace(settings, mode="mean")
         aggregated[stage] = aggregate_stage(frame, settings, warnings)
@@ -313,8 +366,10 @@ def load_predictions(config: SessionConfig, cache_dir: str | Path | None = None)
                             "duplicate_rows_p2": duplicate_counts.get(2, {}).get((target, model), 0),
                             "duplicate_rows_p3": duplicate_counts.get(3, {}).get((target, model), 0),
                             "join_strategy": "replicate" if replicate_mode else "sequence"})
-        joined_models.append(joined.drop(columns="model"))
-    wide_keys = ["target", "sequence"] + (["_rep"] if replicate_mode else [])
+        if joined_mode:
+            joined = reduce_joined_replicates(joined, model, config, warnings)
+        joined_models.append(joined.drop(columns="model", errors="ignore"))
+    wide_keys = ["target", "sequence"] + (["_rep"] if replicate_mode and not joined_mode else [])
     table = pd.DataFrame(columns=wide_keys)
     for frame in joined_models:
         table = frame if table.empty else table.merge(frame, on=wide_keys, how="outer", validate="one_to_one")
@@ -326,7 +381,9 @@ def load_predictions(config: SessionConfig, cache_dir: str | Path | None = None)
         table[f"n_rep_p{stage}"] = table[columns].fillna(0).sum(axis=1).astype(int) if columns else 0
     from .analysis import add_consolidation_scores
 
-    table = add_consolidation_scores(table, models)
+    if not joined_mode:
+        table = add_consolidation_scores(table, models)
+    table.attrs["joined_replicates"] = joined_mode
     for column in [column for column in table if "__" in column and not column.startswith(("n_rep_", "files_"))]:
         if table[column].isna().mean() > 0.5:
             warnings.append(f"{column}: more than 50% missing values")

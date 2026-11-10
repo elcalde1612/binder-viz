@@ -12,7 +12,7 @@ from .config import Aggregation, Folder, infer_target
 from .experiments import load_experiments
 from .loader import discover_files, discover_run_folders, replicate_selector_columns
 from .paths import input_files, path_list, yaml_mapping
-from .registry import DEFAULT_SCORES, load_registry, save_registry, score_catalog
+from .registry import DEFAULT_SCORES, builtin_composites, load_registry, save_registry, score_catalog
 
 
 def local_source(label: str, value: str, key: str, suffixes: tuple[str, ...]) -> str:
@@ -222,9 +222,33 @@ def render_setup(config, on_load):
     selectors, selector_warnings = cached_selector_columns(config.folders, file_states)
     with st.expander("Replicate Handling", expanded=not bool(config.folders)):
         config.include_phase3 = st.checkbox("Include phase3 / Rosetta", config.include_phase3, key="setup_include_phase3")
-        config.phase2 = aggregation_controls("phase2", config.phase2, selectors["phase2"], config.registry)
-        if config.include_phase3:
-            config.phase3 = aggregation_controls("phase3", config.phase3, selectors["phase3"], config.registry)
+        joined = st.toggle("Aggregate joined replicates", value=bool(config.joined_replicates), key="setup_joined_replicates")
+        if joined:
+            modes = ["best", "worst", "mean"]
+            mode = st.selectbox("Joined aggregation", modes, index=modes.index(config.joined_replicates.get("mode", "best")), key="setup_joined_mode")
+            chosen = {}
+            for model in sorted({folder.model for folder in config.folders}):
+                columns = {f"{name}__{model}": "higher_better" for name in selectors["phase2"]}
+                if config.include_phase3:
+                    columns.update({f"ros_{name}__{model}": "lower_better" for name in selectors["phase3"]})
+                options = [f"composite__{model}"] + [spec["column"] for spec in builtin_composites([model], columns)]
+                options += [spec["column"] for spec in config.composites if spec.get("kind") == "composite" and
+                            spec["column"].endswith(f"__{model}") and all(column.endswith(f"__{model}") for column in spec.get("weights", {}))]
+                options = list(dict.fromkeys(options))
+                current = config.joined_replicates.get("selectors", {}).get(model, options[0])
+                selector_key = f"setup_joined_selector_{model}"
+                if st.session_state.get(selector_key) not in options:
+                    st.session_state.pop(selector_key, None)
+                chosen[model] = st.selectbox(f"{model} composite selector", options,
+                                             index=options.index(current) if current in options else 0, key=selector_key)
+            config.joined_replicates = {"mode": mode, "selectors": chosen}
+            config.phase2.std = st.checkbox("Include replicate standard deviations", config.phase2.std, key="setup_joined_std")
+            config.phase3.std = config.phase2.std
+        else:
+            config.joined_replicates = {}
+            config.phase2 = aggregation_controls("phase2", config.phase2, selectors["phase2"], config.registry)
+            if config.include_phase3:
+                config.phase3 = aggregation_controls("phase3", config.phase3, selectors["phase3"], config.registry)
         config.duplicates = st.selectbox("Duplicate replicate policy", ["first", "last", "error"], index=["first", "last", "error"].index(config.duplicates), key="setup_duplicates")
         if selector_warnings:
             with st.expander("Column discovery warnings"):

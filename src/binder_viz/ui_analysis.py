@@ -110,7 +110,9 @@ def derived_scores(table, catalog, config, experiments):
         column = spec["column"]
         try:
             ingredients = list(spec.get("weights", {})) if spec["kind"] == "composite" else spec.get("columns", [])
-            if spec["kind"] == "composite":
+            if spec["kind"] == "composite" and table.attrs.get("joined_replicates") and column in table:
+                pass
+            elif spec["kind"] == "composite":
                 table[column] = composite(table, spec["weights"], directions, spec.get("normalization", "rank"), spec.get("within_target", True))
             elif spec["kind"] == "consensus":
                 table[column] = consensus(table, spec["columns"], directions, spec.get("mode", "mean_rank"),

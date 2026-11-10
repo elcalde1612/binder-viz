@@ -1,0 +1,369 @@
+folders:
+- path: /project/biomols/STAMP/benchmarks/results/der7_af2
+  target: der7
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/der7_esmf2
+  target: der7
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/der7_od
+  target: der7
+  model: opendde
+- path: /project/biomols/STAMP/benchmarks/results/der21_od
+  target: der21
+  model: opendde
+- path: /project/biomols/STAMP/benchmarks/results/der21_esmf2
+  target: der21
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/der21
+  target: der21
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/fcrn_af2
+  target: fcrn
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/fcrn_esmf2
+  target: fcrn
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/fcrn_od
+  target: fcrn
+  model: opendde
+- path: /project/biomols/STAMP/benchmarks/results/hIDI2_af2
+  target: human-idi2
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/hIDI2_esmfold2
+  target: human-idi2
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/hIDI2_opendde
+  target: human-idi2
+  model: opendde
+- path: /project/biomols/STAMP/benchmarks/results/fgf-r1_af2
+  target: fgf-r1
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/fgf-r1_esmfold2
+  target: fgf-r1
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/fgf-r1_opendde
+  target: fgf-r1
+  model: opendde
+- path: /project/biomols/STAMP/benchmarks/results/HNMT
+  target: hnmt
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/hmt_esmfold2
+  target: hnmt
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/hmt_opendde
+  target: hnmt
+  model: opendde
+- path: /project/biomols/STAMP/benchmarks/results/human-ambp_af2
+  target: human-ambp
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/human-ambp_esmf2
+  target: human-ambp
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/human-ambp_od
+  target: human-ambp
+  model: opendde
+- path: /project/biomols/STAMP/benchmarks/results/PDL1
+  target: pd-l1
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/PDL1_esmfold2
+  target: pd-l1
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/PDL1_opendde
+  target: pd-l1
+  model: opendde
+- path: /project/biomols/STAMP/benchmarks/results/PDGFR_af2
+  target: human-pdgfr-beta
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/PDGFR_esmfold2
+  target: human-pdgfr-beta
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/PDGFR_opendde 
+  target: human-pdgfr-beta
+  model: opendde
+- path: /project/biomols/STAMP/benchmarks/results/MZB1_af2
+  target: human-mzb1-perp1
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/MZB1_esmfold2
+  target: human-mzb1-perp1
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/MZB1_opendde
+  target: human-mzb1-perp1
+  model: opendde
+- path: /project/biomols/STAMP/benchmarks/results/IL7R_af2
+  target: il7r
+  model: af2
+- path: /project/biomols/STAMP/benchmarks/results/IL7R_esmfold2
+  target: il7r
+  model: esmfold2
+- path: /project/biomols/STAMP/benchmarks/results/IL7R_opendde
+  target: il7r
+  model: opendde
+phase2:
+  mode: best
+  selector: iptm
+  direction: higher_better
+  overrides: {}
+  std: true
+  composite: {}
+phase3:
+  mode: best
+  selector: total_score
+  direction: lower_better
+  overrides: {}
+  std: true
+  composite: {}
+include_phase3: true
+duplicates: first
+registry_path: ''
+registry:
+- name: iptm
+  stage: phase2
+  direction: higher_better
+  group: confidence
+- name: ipsae
+  stage: phase2
+  direction: higher_better
+  group: confidence
+- name: ipsae_binder
+  stage: phase2
+  direction: higher_better
+  group: confidence
+- name: plddt
+  stage: phase2
+  direction: higher_better
+  group: confidence
+- name: ptm
+  stage: phase2
+  direction: higher_better
+  group: confidence
+- name: pae
+  stage: phase2
+  direction: lower_better
+  group: confidence
+- name: PAE_interaction
+  stage: phase2
+  direction: lower_better
+  group: confidence
+- name: pae_interaction
+  stage: phase2
+  direction: lower_better
+  group: confidence
+- name: dG_separated
+  stage: phase3
+  direction: lower_better
+  group: interface
+- name: interface_dG
+  stage: phase3
+  direction: lower_better
+  group: interface
+- name: dG_cross/dSASAx100
+  stage: phase3
+  direction: lower_better
+  group: interface
+- name: total_score
+  stage: phase3
+  direction: lower_better
+  group: energy
+- name: score
+  stage: phase3
+  direction: lower_better
+  group: energy
+- name: binder_score
+  stage: phase3
+  direction: lower_better
+  group: energy
+- name: SASA
+  stage: phase3
+  direction: higher_better
+  group: interface
+- name: dSASA_int
+  stage: phase3
+  direction: higher_better
+  group: interface
+- name: interface_sc
+  stage: phase3
+  direction: higher_better
+  group: interface
+- name: interface_packstat
+  stage: phase3
+  direction: higher_better
+  group: interface
+- name: shape_complementarity
+  stage: phase3
+  direction: higher_better
+  group: interface
+- name: apbs_elec_complementarity
+  stage: phase2
+  direction: higher_better
+  group: electrostatics
+- name: apbs_elec_complementarity
+  stage: phase3
+  direction: higher_better
+  group: electrostatics
+- name: apbs_dG_elec
+  stage: phase2
+  direction: lower_better
+  group: electrostatics
+- name: apbs_dG_elec
+  stage: phase3
+  direction: lower_better
+  group: electrostatics
+- name: prodigy_dG_bind
+  stage: phase2
+  direction: lower_better
+  group: electrostatics
+- name: prodigy_dG_bind
+  stage: phase3
+  direction: lower_better
+  group: electrostatics
+- name: prodigy_log10_kd
+  stage: phase2
+  direction: lower_better
+  group: electrostatics
+- name: prodigy_log10_kd
+  stage: phase3
+  direction: lower_better
+  group: electrostatics
+- name: composite
+  stage: derived
+  direction: higher_better
+  group: composite
+- name: score_refold
+  stage: derived
+  direction: higher_better
+  group: composite
+- name: score_electrostatics
+  stage: derived
+  direction: higher_better
+  group: composite
+- name: score_rosetta
+  stage: derived
+  direction: higher_better
+  group: composite
+experiments:
+- path: /wuppertal/gmqcu/projects/binder-viz/datasets/proteinbase_experimental_latest.csv
+  source: auto
+  columns: {}
+label_mapping: {}
+experimental_duplicates: flag
+filters:
+  targets:
+  - der7
+  - der21
+  - fcrn
+  - fgf-r1
+  - hnmt
+  - human-ambp
+  - human-idi2
+  - pd-l1
+  - human-mzb1-perp1
+  - human-pdgfr-beta
+  - il7r
+  models:
+  - af2
+  - esmfold2
+  - opendde
+  min_plddt: 0.0
+composites: []
+joined_replicates: 
+  mode: best
+  selectors:
+    af2: composite__af2
+    esmfold2: composite__esmfold2
+    opendde: composite__opendde
+selection:
+  scores:
+  - composite__esmfold2
+  - composite_interface__opendde
+  score: ranking_score__combined
+  direction: higher_better
+  combination_rule: union
+  combination_percentile: 0.7
+  combination_weights:
+    composite__esmfold2: 1.0
+    composite_interface__opendde: 0.9
+  combination_within_target: true
+  exclude_tested: true
+  thresholds: []
+  positive_targets:
+  - t1
+  - t2
+  negative_selection:
+  - target: t1t2
+    score: ranking_score__combined
+    direction: higher_better
+    threshold: 0.7265919811320755
+  off_target_ranking_score: union(composite__esmfold2, composite_interface__opendde)
+  exclude_missing_off_targets: true
+  off_target_use_predictions: true
+  agreement_columns: []
+  minimum_models: 0
+  agreement_percentile: 0.8
+  count: 25
+  per_target: 12
+  pool_limit: 2000
+  cluster: true
+  identity: 0.85
+  per_cluster: 2
+  target_caps:
+    der21: 12
+    der7: 12
+    fcrn: 12
+    fgf-r1: 12
+    hnmt: 12
+    human-ambp: 12
+    human-idi2: 12
+    human-mzb1-perp1: 12
+    human-pdgfr-beta: 12
+    il7r: 12
+    mm2_gsgs_egfp: 12
+    pd-l1: 12
+    t1: 12
+    t1t2: 12
+    t2: 12
+  manual_selected_ids:
+  - 1d80bbe56958c2b315fa
+  - 1e161fd14d6acecf7cb4
+  - 2193609b8dbedcef3c1e
+  - 45e79adc550720aa61e4
+  - 4d2ac64b7350985327fd
+  - 5d46cb648f89725d649c
+  - 6c5f695529a59cd4444f
+  - 6f7216e384bfd51cd8f2
+  - 9443a2ef651cab6ec7a7
+  - 9485d0420a70ca3556e5
+  - 98e3468cdc26d2f34d2b
+  - 9e5de740034d9d78f472
+  - d01c760eaaae5e6b7c81
+  - df5dfd34cbae7d603614
+  manual_rationale:
+    6f7216e384bfd51cd8f2: rank=1; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=1; negative_targets=t1t2
+    1e161fd14d6acecf7cb4: rank=2; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=2; negative_targets=t1t2
+    6c5f695529a59cd4444f: rank=3; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=3; negative_targets=t1t2
+    45e79adc550720aa61e4: rank=4; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=4; negative_targets=t1t2
+    9443a2ef651cab6ec7a7: rank=5; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=5; negative_targets=t1t2
+    9485d0420a70ca3556e5: rank=6; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=6; negative_targets=t1t2
+    5d46cb648f89725d649c: rank=7; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=7; negative_targets=t1t2
+    d01c760eaaae5e6b7c81: rank=8; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=8; negative_targets=t1t2
+    9e5de740034d9d78f472: rank=9; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=9; negative_targets=t1t2
+    4d2ac64b7350985327fd: rank=10; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=10; negative_targets=t1t2
+    1d80bbe56958c2b315fa: rank=11; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=3; negative_targets=t1t2
+    98e3468cdc26d2f34d2b: rank=12; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=11; negative_targets=t1t2
+    df5dfd34cbae7d603614: rank=13; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=12; negative_targets=t1t2
+    2193609b8dbedcef3c1e: rank=15; score=union(composite__esmfold2, composite_interface__opendde);
+      identity_cap=0.85; cluster=13; negative_targets=t1t2
+bootstrap_samples: 200
+random_seed: 1612

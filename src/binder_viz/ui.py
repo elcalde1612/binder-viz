@@ -137,7 +137,7 @@ def run():
                 st.info("No predictions loaded.")
             return
         active = st.session_state["active_config"]
-        if any(config.to_dict()[field] != active.to_dict()[field] for field in ["folders", "phase2", "phase3", "include_phase3", "duplicates", "experiments", "label_mapping", "experimental_duplicates"]):
+        if any(config.to_dict()[field] != active.to_dict()[field] for field in ["folders", "phase2", "phase3", "include_phase3", "duplicates", "joined_replicates", "composites", "registry", "experiments", "label_mapping", "experimental_duplicates"]):
             st.warning("Setup has changed. Load to replace the current dataset.")
         experiments = st.session_state["experiments"]
         table, catalog, coefficients, issues = derived_scores(result.table, st.session_state["catalog"], config, experiments.table)

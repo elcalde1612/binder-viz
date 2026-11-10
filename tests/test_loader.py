@@ -130,3 +130,79 @@ def test_selector_columns_and_default_composite(tmp_path):
     assert result.table.iptm__af2.iloc[0] == 0.7
     assert result.table.replicate_composite__af2.iloc[0] == pytest.approx(84.375)
     assert result.table.composite__af2.iloc[0] == 100
+
+
+@pytest.mark.parametrize("mode,iptm,energy,score", [
+    ("best", 0.6, -100, 2 / 3), ("worst", 0.9, -1, 0.5),
+    ("mean", 0.75, -50.5, 7 / 12),
+])
+def test_joined_replicate_composite_reduction(tmp_path, mode, iptm, energy, score):
+    write_run(tmp_path, 2, [
+        {"sequence": "AAA", "pdbname": "a_seed_1", "iptm": 0.9},
+        {"sequence": "AAA", "pdbname": "a_seed_2", "iptm": 0.6},
+        {"sequence": "CCC", "pdbname": "c_seed_1", "iptm": 0.95},
+    ])
+    write_run(tmp_path, 3, [
+        {"sequence": "AAA", "description": "a_seed_1", "interface_dG": -1},
+        {"sequence": "AAA", "description": "a_seed_2", "interface_dG": -100},
+        {"sequence": "CCC", "description": "c_seed_1", "interface_dG": -10},
+    ])
+    config = SessionConfig(folders=[Folder(str(tmp_path), "T", "af2")],
+                           joined_replicates={"mode": mode, "selectors": {"af2": "composite_interface__af2"}})
+    result = load_predictions(config, tmp_path / "cache")
+    row = result.table.set_index("sequence").loc["AAA"]
+    assert row["iptm__af2"] == pytest.approx(iptm)
+    assert row["ros_interface_dG__af2"] == pytest.approx(energy)
+    assert row["composite_interface__af2"] == pytest.approx(score)
+    assert row["n_rep_p2__af2"] == 2
+    assert row["n_rep_p3__af2"] == 2
+    assert result.report.iloc[0]["join_strategy"] == "replicate"
+    assert SessionConfig.from_yaml(config.to_yaml()).to_dict() == config.to_dict()
+    pd.testing.assert_frame_equal(result.table, load_predictions(config, tmp_path / "cache").table)
+    assert load_predictions(config, tmp_path / "cache").table.attrs["joined_replicates"]
+
+
+def test_joined_replicates_multiple_models_and_unmatched_rows(tmp_path):
+    write_run(tmp_path, 2, [
+        {"sequence": "AAA", "pdbname": "a_seed_1", "iptm": 0.9},
+        {"sequence": "AAA", "pdbname": "a_seed_2", "iptm": 0.6},
+        {"sequence": "CCC", "pdbname": "c_seed_1", "iptm": 0.95},
+        {"sequence": "DDD", "pdbname": "d_seed_1", "iptm": 0.1},
+    ])
+    write_run(tmp_path, 3, [
+        {"sequence": "AAA", "description": "a_seed_1", "interface_dG": -1},
+        {"sequence": "AAA", "description": "a_seed_2", "interface_dG": -100},
+        {"sequence": "CCC", "description": "c_seed_1", "interface_dG": -10},
+    ])
+    config = SessionConfig(folders=[Folder(str(tmp_path), "T", model) for model in ["af2", "opendde"]],
+                           joined_replicates={"mode": "best", "selectors": {"opendde": "composite_interface__opendde"}})
+    result = load_predictions(config)
+    assert result.table.sequence_id.is_unique
+    assert set(result.table.sequence) == {"AAA", "CCC", "DDD"}
+    assert "composite__af2" in result.table
+    row = result.table.set_index("sequence").loc["DDD"]
+    assert row["n_rep_p2__opendde"] == 1
+    assert row["n_rep_p3__opendde"] == 0
+    assert pd.isna(row["composite_interface__opendde"])
+    assert result.report.unmatched_phase2.tolist() == [1, 1]
+    assert any("all-missing joined selector" in warning for warning in result.warnings)
+
+
+@pytest.mark.parametrize("names,selector,message", [
+    (["a", "b"], "composite__af2", "unique, non-missing replicate IDs"),
+    (["a_seed_1", "b_seed_1"], "composite__af2", "unique, non-missing replicate IDs"),
+    (["a_seed_1", "a_seed_2"], "composite_interface__af2", "selector .* unavailable"),
+])
+def test_joined_replicates_reject_invalid_inputs(tmp_path, names, selector, message):
+    write_run(tmp_path, 2, [{"sequence": "AAA", "pdbname": name, "iptm": 0.9} for name in names])
+    config = SessionConfig(folders=[Folder(str(tmp_path), "T", "af2")], include_phase3=False,
+                           joined_replicates={"mode": "best", "selectors": {"af2": selector}})
+    with pytest.raises(ValueError, match=message):
+        load_predictions(config)
+
+
+def test_joined_replicate_config_validation():
+    with pytest.raises(ValueError, match="Joined replicate mode"):
+        SessionConfig(joined_replicates={"mode": "invalid"})
+    with pytest.raises(ValueError, match="map models"):
+        SessionConfig(joined_replicates={"mode": "best", "selectors": []})

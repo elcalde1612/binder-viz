@@ -116,6 +116,35 @@ input unit can be overridden in **Experimental Files and Labels**.
 
 ## Default Composite and Replicates
 
+For composites spanning phase2 and phase3, enable **Replicate Handling >
+Aggregate joined replicates**. Choose **best**, **worst**, or **mean**, and a
+composite selector for each model, then click **Load**. This mode replaces the
+independent stage aggregation settings and their per-column overrides.
+
+```yaml
+joined_replicates:
+	mode: best
+	selectors:
+		esmfold2: composite__esmfold2
+		opendde: composite_interface__opendde
+```
+
+Models without an explicit selector use `composite__<model>`. Matching uses
+target, model, sequence, and replicate ID; missing or ambiguous IDs are errors.
+Stages are outer-joined, so unmatched rows remain available and are reported.
+Missing ingredients produce missing composite values, sorted last for both
+best and worst; groups with no usable selector retain their first row with a
+warning. A mean uses the available values for each column.
+
+Composite percentiles are calculated over raw joined replicate rows within each
+target/model. Best/worst retain the entire joined row selected by the composite
+(higher is better). Mean averages the per-replicate composite values and numeric
+measurements, rather than computing a new composite from averaged measurements.
+These composite values are preserved in Analysis and Candidate Selection.
+Standard deviations and phase-specific counts describe all available replicates.
+Model-local built-in and custom weighted composites are supported; cross-model
+consensus and fitted scores remain downstream analyses, not replicate selectors.
+
 **Replicate Handling > Selector score** lists numeric columns detected separately
 for each stage, plus **Composite (consolidation)** when recognized ingredients
 are present. Best/worst select a coherent row using that stage's selector;

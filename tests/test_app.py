@@ -18,6 +18,30 @@ def test_empty_app():
     assert [tab.label for tab in app.tabs] == ["Setup", "Analysis", "Candidate Selection"]
 
 
+def test_joined_replicate_controls_preserve_scores(tmp_path):
+    config = create_demo(tmp_path / "joined")
+    config.joined_replicates = {"mode": "mean", "selectors": {"af2": "composite_interface__af2"}}
+    app = AppTest.from_file(str(APP))
+    app.session_state["pending_config"] = config.to_dict()
+    app.session_state["auto_load"] = True
+    app.run(timeout=60)
+    assert not app.exception
+    assert not app.error, [item.value for item in app.error]
+    assert app.selectbox(key="setup_joined_mode").value == "mean"
+    assert app.selectbox(key="setup_joined_selector_af2").value == "composite_interface__af2"
+    from binder_viz.ui_analysis import derived_scores
+
+    result = app.session_state["result"]
+    table, _, _, issues = derived_scores(result.table, app.session_state["catalog"], config,
+                                          app.session_state["experiments"].table)
+    assert not issues
+    pd.testing.assert_series_equal(table["composite_interface__af2"], result.table["composite_interface__af2"])
+    app.selectbox(key="setup_joined_mode").set_value("worst").run(timeout=60)
+    assert not app.exception
+    assert app.session_state["config"].joined_replicates["mode"] == "worst"
+    assert any("Setup has changed" in warning.value for warning in app.warning)
+
+
 def test_demo_load_analyze_select(tmp_path):
     config = create_demo(tmp_path / "example")
     app = AppTest.from_file(str(APP))

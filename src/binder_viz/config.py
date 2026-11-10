@@ -87,11 +87,17 @@ class SessionConfig:
     experimental_duplicates: str = "flag"
     filters: dict = field(default_factory=dict)
     composites: list[dict] = field(default_factory=list)
+    joined_replicates: dict = field(default_factory=dict)
     selection: dict = field(default_factory=dict)
     bootstrap_samples: int = 200
     random_seed: int = 42
 
     def __post_init__(self):
+        if self.joined_replicates:
+            if self.joined_replicates.get("mode") not in {"best", "worst", "mean"}:
+                raise ValueError("Joined replicate mode must be best, worst or mean.")
+            if not isinstance(self.joined_replicates.get("selectors", {}), dict):
+                raise ValueError("Joined replicate selectors must map models to score columns.")
         if self.duplicates not in {"first", "last", "error"}:
             raise ValueError("Duplicate policy must be first, last or error.")
         if self.experimental_duplicates not in {"flag", "aggregate", "error"}:
